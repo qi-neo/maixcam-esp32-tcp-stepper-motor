@@ -47,6 +47,7 @@
 ## 通信流程
 
 ```mermaid
+%%{init: {"fontFamily": "-apple-system, BlinkMacSystemFont, PingFang SC, Helvetica Neue, Microsoft YaHei, sans-serif"}}%%
 sequenceDiagram
     participant E as ESP32（TCP 客户端）
     participant M as Maixcam Pro（TCP 服务器）
