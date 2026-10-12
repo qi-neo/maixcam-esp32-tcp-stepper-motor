@@ -5,6 +5,8 @@
 > - （二）Maixcam 端：<https://blog.csdn.net/2401_84550508/article/details/144566530>（2024-12-18）
 >
 > 本文由 CSDN 迁移至 GitHub 并合并为单篇。**已对原文中的 Wi-Fi 密码进行脱敏处理**（占位符 `<YOUR_WIFI_PASSWORD>`）。
+>
+> 源码文件：[esp32_tcp_stepper.ino](esp32_tcp_stepper/esp32_tcp_stepper.ino)、[maixcam_tcp_server.py](maixcam_tcp_server.py)
 
 ## 概述
 
