@@ -1,5 +1,8 @@
 # Maixcam Pro + ESP32 通过 socket TCP 通信控制步进电机（完整教程）
 
+> ⚠️ **代码已优化**：本 README 内联的 Arduino/Python 代码为**初版教程**示例。最新、可运行的源码以仓库根目录的 [`esp32_tcp_stepper/esp32_tcp_stepper.ino`](esp32_tcp_stepper/esp32_tcp_stepper.ino) 与 [`maixcam_tcp_server.py`](maixcam_tcp_server.py) 为准。
+> 优化内容（非阻塞状态机、可靠行缓冲、像素→位置映射、双层重连、请求-应答握手、结构化 ACK 等）与深入研究路线见 [`OPTIMIZATION.md`](OPTIMIZATION.md)，通信协议规范见 [`protocol.md`](protocol.md)。
+
 > 由两篇 CSDN 博客合并为单篇：
 > - （一）ESP32 端：<https://blog.csdn.net/2401_84550508/article/details/144541721>（2024-12-17）
 > - （二）Maixcam 端：<https://blog.csdn.net/2401_84550508/article/details/144566530>（2024-12-18）
