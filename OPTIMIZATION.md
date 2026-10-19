@@ -19,16 +19,23 @@
 
 ### ESP32（`esp32_tcp_stepper.ino`）
 - **非阻塞状态机**（`IDLE → MOVING_TARGET → DWELL → MOVING_HOME → ACK`）：用 `moveTo()` + `run()` 推进，loop 始终可响应；新增 `BUSY` 回执避免打断在途动作。
-- **可靠行缓冲**：定长 `rxBuf` 按 `\n` 分帧，半包保留、超长截断，逐行**立即**处理，删除 10s 节流。
+- **可靠行缓冲**：定长 `rxBuf` 按 `\n` 分帧，半包保留、超长整行丢弃，逐行**立即**处理，删除 10s 节流。
 - **像素→位置真正生效**（PIXEL 模式）：`x,y` 线性映射到 `TRAVEL_CIRCLES` 圈行程；保留 PRESET 模式兼容旧教程。
 - **运动参数合理化**：`MAX_SPEED = 3200*4` 步/秒、`ACCEL = 3200*8`，可按负载调参。
 - **双层重连**：`ensureWiFi()` + `ensureTCP()`，均带 3~5s 退避；LED 常亮=已连、闪烁=未连。
-- **结构化 ACK**：`ACK:STATUS:CAT:POS1:POS2\n`，`STATUS ∈ {DONE, ERR, BUSY}`。
-- **可选校验和**：`USE_CHECKSUM` 宏，下行可带 `(x+y+cat)%256`。
+- **结构化 + 带序号 ACK**：`ACK:STATUS:CAT:POS1:POS2:SEQ\n`，`STATUS ∈ {DONE, ERR, BUSY, ESTOP, RESUME}`。
+- **严格解析**：`parseCommand` 要求字段数恰好匹配（4 个；启用校验和时 5 个），每个字段必须是十进制数字，拒绝尾随垃圾 / 空字段 / 多余逗号。
+- **软件急停**：`ESTOP` 立即停止运动并关闭驱动器使能，`RESUME` 恢复接收指令（均回 ACK）。
+- **软限位**：目标脉冲夹在 `[0, TRAVEL_CIRCLES*CIRCLE_PULSES]`，越界回 `ERR` 且不动。
+- **可选校验和**：`USE_CHECKSUM` 宏，下行可带 `(x+y+cat+seq)%256`。
 - **使能极性可配置**：`ENABLE_LEVEL` 适配不同驱动器。
 
 ### Maixcam（`maixcam_tcp_server.py`）
-- **请求-应答握手**：每条指令后 `recv` 等待 `ACK`，受 `RECV_TIMEOUT` 保护，移除 `time.sleep(18)`。
+- **请求-应答握手**：每条指令后 `recv` 等待带序号的 `ACK`，受 `RECV_TIMEOUT` 保护，移除 `time.sleep(18)`。
+- **序号匹配**：只接受 `SEQ` 与当前 seq 相同的回执，迟到/错位回执丢弃并记日志（修掉 ACK 错位）。
+- **可选认证**：`AUTH_TOKEN` 非空时要求客户端首行 `AUTH <token>`，校验失败立即断开；默认空保持旧行为。
+- **单客户端**：已有连接时拒绝新连接；连续 ACK 超时会断开死连接释放槽位。
+- **急停接口**：`send_estop()` / `send_resume()`；关机或会话异常结束时尽量发一次 ESTOP。
 - **行缓冲**：服务端也按 `\n` 分帧，处理半包/粘包。
 - **检测桩 `generate_command()`**：明确标注接入 Maixcam 真实 YOLO 检测结果的位置（取置信度最高目标）。
 - **优雅退出**：`SIGINT/SIGTERM` 关闭监听套接字；`SO_REUSEADDR` 已保留。
@@ -39,7 +46,7 @@
 
 ## 三、后续可扩展（工程层面，短期可做）
 
-1. **急停与限位**：在 `loop()` 中轮询急停按钮 / 限位开关（中断或 GPIO），触发时 `stepper.stop()` 并进入安全态。
+1. **硬件急停与限位开关**：软件 `ESTOP` 命令已实现；物理急停按钮 / 限位开关还需在 `loop()` 中轮询（中断或 GPIO），触发时 `stepper.stop()` 并进入安全态。
 2. **OTA 与日志**：接入 ArduinoOTA，便于远程升级；把关键状态经 WebSocket/串口推到上位机可视化。
 3. **多目标调度**：Maixcam 端按优先级连续下发多条指令（如先近后远），ESP32 用指令队列缓存。
 4. **参数下发**：允许 Maixcam 通过指令动态设置速度/加速度/行程，无需重烧固件。
@@ -68,7 +75,7 @@
 
 5. **通信协议升级**
    - 二进制协议（长度前缀 + CRC16）替代文本，省带宽、抗干扰；
-   - 应用层 ACK/重传/序号（本版已实现基础 ACK，可加序号与重传）；
+   - 应用层 ACK/重传/序号（本版已实现带 8 位序号的 ACK，可升级到 16 位并加重传）；
    - **micro-ROS**：让 ESP32 成为 ROS2 节点，直接订阅目标 `geometry_msgs/Pose`，与 Maixcam/上位机统一在 ROS2 生态；
    - **ESP-NOW**：本地低延迟控制用 ESP-NOW，TCP 仅负责任务级调度。
 
