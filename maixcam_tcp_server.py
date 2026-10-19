@@ -61,7 +61,10 @@ _cam = None
 
 def _init_maix():
     """懒初始化摄像头与 YOLO 检测器，仅首次调用时执行；失败则回退演示。"""
-    global _detector, _cam
+    # _HAS_MAIX 必须一起声明 global：函数体后面有 `_HAS_MAIX = False`，
+    # 少了这句，Python 会把 _HAS_MAIX 当成整个函数的局部变量，
+    # 于是下面 `if not _HAS_MAIX` 每次都抛 UnboundLocalError（服务器一条指令都发不出去）。
+    global _detector, _cam, _HAS_MAIX
     if _detector is not None:
         return True
     if not _HAS_MAIX:
@@ -117,6 +120,15 @@ def handle_client(conn, addr):
                 continue
 
             msg = f"{x},{y},{cat}\n".encode("utf-8")
+
+            # 发送前丢掉缓冲里残留的完整行：它们只可能是上一条指令的迟到 ACK。
+            # ACK 不带序号，留着必然被当成本条的回执，导致此后永久错位。
+            while b"\n" in buf:
+                stale, _, buf = buf.partition(b"\n")
+                stale = stale.decode("utf-8", "replace").strip()
+                if stale:
+                    print(f"[warn] 丢弃迟到回执: {stale}")
+
             conn.sendall(msg)
             print(f"[send] {x},{y},{cat} -> {addr}")
 
@@ -130,7 +142,10 @@ def handle_client(conn, addr):
                     buf += chunk
                 line, _, buf = buf.partition(b"\n")
                 ack = line.decode("utf-8", "replace").strip()
-                print(f"[recv] {ack} <- {addr}")
+                if ack.startswith("ACK:"):
+                    print(f"[recv] {ack} <- {addr}")
+                else:
+                    print(f"[warn] 非回执行: {ack!r}")
             except socket.timeout:
                 print(f"[warn] ACK timeout from {addr} ({RECV_TIMEOUT}s)")
                 if ACK_TIMEOUT_ACTION == "abort":
