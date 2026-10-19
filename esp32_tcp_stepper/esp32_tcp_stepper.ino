@@ -22,9 +22,15 @@ const char* HOST_IP       = "192.168.10.5";           // Maixcam TCP 服务器 I
 const uint16_t HOST_PORT  = 8080;
 
 // 控制模式：
-//   PIXEL  —— 按检测到的像素坐标线性映射到电机行程（推荐，符合"跟随目标"的本意）
-//   PRESET —— 仅按类别映射到预设位（兼容旧教程的 4 个固定位）
-#define CONTROL_MODE PIXEL
+//   MODE_PIXEL  —— 按检测到的像素坐标线性映射到电机行程（推荐，符合"跟随目标"的本意）
+//   MODE_PRESET —— 仅按类别映射到预设位（兼容旧教程的 4 个固定位）
+//
+// 注意：这里必须给模式一个"有定义的值"。原先写的是 `#define CONTROL_MODE PIXEL`
+// 并直接用裸标识符 PIXEL 做比较，而 PIXEL 全文从未定义，预处理后
+// `if (CONTROL_MODE == PIXEL)` 变成 `if (PIXEL == PIXEL)`，编译直接失败。
+#define MODE_PIXEL  1
+#define MODE_PRESET 2
+#define CONTROL_MODE MODE_PIXEL
 
 // 电机引脚（物理脚位保持与原教程一致）
 #define ENA_PIN_1 27   // 电机 X 使能
@@ -61,6 +67,9 @@ WiFiClient client;
 const size_t RX_BUF_SIZE = 128;
 char rxBuf[RX_BUF_SIZE];
 size_t rxLen = 0;
+// 单行超长标记：超长行必须整行丢弃。若只截断前缀就交给 parseCommand，
+// 截断后的 "12,34," 仍可能被解析成合法指令，真的驱动电机。
+bool rxOverflow = false;
 
 // 运动状态机
 enum MotionState { IDLE, MOVING_TARGET, DWELL, MOVING_HOME };
@@ -142,7 +151,7 @@ void handleLine(const char* line) {
 
   pendingCategory = (int)cat;
 
-  if (CONTROL_MODE == PIXEL) {
+  if (CONTROL_MODE == MODE_PIXEL) {
     targetX = (long)((double)x / MAX_PIXEL_X * TRAVEL_CIRCLES * CIRCLE_PULSES);
     targetY = (long)((double)y / MAX_PIXEL_Y * TRAVEL_CIRCLES * CIRCLE_PULSES);
   } else {
@@ -247,13 +256,19 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\nWiFi connected, IP=" + WiFi.localIP().toString());
+  // 串口日志：显式构造 String 再拼接，避免 "字面量 + String" 在部分核心上
+  // 找不到匹配的 operator+ 而编译失败
+  Serial.println(String("\nWiFi connected, IP=") + WiFi.localIP().toString());
 
   // 电机参数
   stepperX.setMaxSpeed(MAX_SPEED);
   stepperX.setAcceleration(ACCEL);
   stepperY.setMaxSpeed(MAX_SPEED);
   stepperY.setAcceleration(ACCEL);
+  // 驱动器（DM542 一类）要求 STEP 脉宽 ≥2.5 µs、DIR 建立时间 ≥5 µs；
+  // AccelStepper 默认脉宽在部分平台只有 1 µs 量级，显式抬到 3 µs 更稳。
+  stepperX.setMinPulseWidth(3);
+  stepperY.setMinPulseWidth(3);
   stepperX.setCurrentPosition(0);
   stepperY.setCurrentPosition(0);
 
@@ -271,11 +286,21 @@ void loop() {
     while (client.available()) {
       char c = client.read();
       if (c == '\n') {
-        rxBuf[rxLen] = '\0';
-        if (rxLen > 0) handleLine(rxBuf);
+        if (rxOverflow) {
+          // 整行丢弃并回 ERR：截断的前缀不可信，宁可不动
+          sendAck("ERR", -1, stepperX.currentPosition(), stepperY.currentPosition());
+          rxOverflow = false;
+        } else {
+          rxBuf[rxLen] = '\0';
+          if (rxLen > 0) handleLine(rxBuf);
+        }
         rxLen = 0;
       } else if (c != '\r') {  // 忽略 '\r'
-        if (rxLen < RX_BUF_SIZE - 1) rxBuf[rxLen++] = c;
+        if (rxLen < RX_BUF_SIZE - 1) {
+          rxBuf[rxLen++] = c;
+        } else {
+          rxOverflow = true;
+        }
       }
     }
   }
