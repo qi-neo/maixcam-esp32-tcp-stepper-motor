@@ -1,0 +1,61 @@
+<svg viewBox="0 0 680 420" width="100%" role="img">
+  <title>集成控制主板功能框图</title>
+  <desc>12V 输入经保险丝与 DC-DC 给 ESP32 供电，ESP32 出 STEP/DIR/ENA 到两路 DM542 驱动器，再驱步进电机</desc>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <text class="th" x="40" y="30" style="font-size:15px;font-weight:500;fill:#26215C">集成控制主板 · 功能框图</text>
+
+  <!-- 电源链 -->
+  <rect x="40" y="60" width="120" height="50" rx="10" fill="#FAEEDA" stroke="#EF9F27" stroke-width="0.5"/>
+  <text class="th" x="100" y="80" text-anchor="middle" dominant-baseline="central" style="fill:#633806">12V 输入</text>
+  <text class="ts" x="100" y="100" text-anchor="middle" dominant-baseline="central" style="fill:#854F0B">端子 + 保险丝</text>
+
+  <line x1="160" y1="85" x2="200" y2="85" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="200" y="60" width="130" height="50" rx="10" fill="#E6F1FB" stroke="#85B7EB" stroke-width="0.5"/>
+  <text class="th" x="265" y="80" text-anchor="middle" dominant-baseline="central" style="fill:#0C447C">DC-DC 降压</text>
+  <text class="ts" x="265" y="100" text-anchor="middle" dominant-baseline="central" style="fill:#185FA5">12V → 5V / 3.3V</text>
+
+  <line x1="330" y1="85" x2="370" y2="85" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="370" y="60" width="150" height="50" rx="10" fill="#EAF3DE" stroke="#639922" stroke-width="0.5"/>
+  <text class="th" x="445" y="80" text-anchor="middle" dominant-baseline="central" style="fill:#27500A">ESP32-WROOM-32</text>
+  <text class="ts" x="445" y="100" text-anchor="middle" dominant-baseline="central" style="fill:#3B6D11">TCP 客户端 + 运动</text>
+
+  <!-- ESP32 输出到两路驱动 -->
+  <line x1="445" y1="110" x2="445" y2="150" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text class="ts" x="455" y="135" style="font-size:11px;fill:#888780">STEP/DIR/ENA</text>
+
+  <rect x="300" y="150" width="150" height="50" rx="10" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="0.5"/>
+  <text class="th" x="375" y="170" text-anchor="middle" dominant-baseline="central" style="fill:#444441">驱动接口 X</text>
+  <text class="ts" x="375" y="190" text-anchor="middle" dominant-baseline="central" style="fill:#5F5E5A">→ DM542 (25/26/27)</text>
+
+  <rect x="480" y="150" width="150" height="50" rx="10" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="0.5"/>
+  <text class="th" x="555" y="170" text-anchor="middle" dominant-baseline="central" style="fill:#444441">驱动接口 Y</text>
+  <text class="ts" x="555" y="190" text-anchor="middle" dominant-baseline="central" style="fill:#5F5E5A">→ DM542 (5/18/17)</text>
+
+  <line x1="375" y1="200" x2="375" y2="240" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="555" y1="200" x2="555" y2="240" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="300" y="240" width="150" height="44" rx="10" fill="#FAECE7" stroke="#F0997B" stroke-width="0.5"/>
+  <text class="th" x="375" y="262" text-anchor="middle" dominant-baseline="central" style="fill:#712B13">步进电机 X</text>
+  <rect x="480" y="240" width="150" height="44" rx="10" fill="#FAECE7" stroke="#F0997B" stroke-width="0.5"/>
+  <text class="th" x="555" y="262" text-anchor="middle" dominant-baseline="central" style="fill:#712B13">步进电机 Y</text>
+
+  <!-- 右侧 IO -->
+  <rect x="40" y="240" width="120" height="44" rx="10" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text class="th" x="100" y="262" text-anchor="middle" dominant-baseline="central" style="fill:#3C3489">状态 LED (2)</text>
+
+  <rect x="40" y="300" width="120" height="44" rx="10" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text class="th" x="100" y="322" text-anchor="middle" dominant-baseline="central" style="fill:#3C3489">限位排针</text>
+
+  <rect x="40" y="360" width="120" height="44" rx="10" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text class="th" x="100" y="382" text-anchor="middle" dominant-baseline="central" style="fill:#3C3489">下载口 / 跳帽</text>
+
+  <line x1="160" y1="262" x2="300" y2="262" stroke="#5F5E5A" stroke-width="0.5" stroke-dasharray="4 3"/>
+  <line x1="160" y1="322" x2="300" y2="322" stroke="#5F5E5A" stroke-width="0.5" stroke-dasharray="4 3"/>
+  <line x1="160" y1="382" x2="370" y2="382" stroke="#5F5E5A" stroke-width="0.5" stroke-dasharray="4 3"/>
+
+  <text class="ts" x="40" y="412" style="font-size:11px;fill:#888780">引脚严格对齐 esp32_tcp_stepper.ino：X(25/26/27) Y(5/18/17) LED(2) ENA 高有效</text>
+</svg>
