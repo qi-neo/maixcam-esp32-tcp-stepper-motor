@@ -13,6 +13,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import maixcam_tcp_server as srv  # noqa: E402
 
 
+class FakeConn:
+    """用可控的 recv 序列模拟对端，便于测超时 / 半包 / 超长行而不占端口。
+
+    chunks 里每个元素是 bytes（一次 recv 返回的内容）；None 表示这次 recv 超时。
+    """
+
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+        self.closed = False
+
+    def settimeout(self, _t):
+        pass
+
+    def recv(self, _n):
+        if not self._chunks:
+            raise ConnectionError("peer closed")
+        nxt = self._chunks.pop(0)
+        if nxt is None:
+            raise socket.timeout("timeout")
+        return nxt
+
+    def close(self):
+        self.closed = True
+
+
 class BuildCommandTests(unittest.TestCase):
     def test_basic_frame(self):
         self.assertEqual(srv.build_command(10, 20, 2, 7), b"10,20,2,7\n")
@@ -127,6 +152,87 @@ class AuthTests(unittest.TestCase):
         with mock.patch.object(srv, "AUTH_TOKEN", "s3cr3t"):
             ok, _ = srv.authenticate(self.b, b"")
             self.assertFalse(ok)
+
+
+class MoreBuildCommandTests(unittest.TestCase):
+    def test_checksum_on_appends_sum_field(self):
+        with mock.patch.object(srv, "USE_CHECKSUM", True):
+            frame = srv.build_command(1, 2, 3, 4)
+            parts = frame.decode().strip().split(",")
+            self.assertEqual(len(parts), 5, "启用校验和必须是 5 字段")
+            self.assertEqual(int(parts[4]), (1 + 2 + 3 + 4) % 256)
+
+    def test_checksum_off_is_four_fields(self):
+        frame = srv.build_command(5, 6, 2, 9)
+        self.assertEqual(len(frame.decode().strip().split(",")), 4)
+
+    def test_seq_wrap_boundary(self):
+        # SEQ_MOD-1 应原样作为序号，回绕到该值
+        frame = srv.build_command(0, 0, 1, srv.SEQ_MOD - 1)
+        self.assertEqual(frame, f"0,0,1,{srv.SEQ_MOD - 1}\n".encode())
+
+    def test_negative_x_rejected(self):
+        with self.assertRaises(ValueError):
+            srv.build_command(-1, 0, 1, 0)
+
+    def test_checksum_value_matches_ino_formula(self):
+        # 与 ESP32 端 sum=(x+y+cat+seq)%256 完全一致
+        with mock.patch.object(srv, "USE_CHECKSUM", True):
+            for x, y, cat, seq in ((0, 0, 1, 0), (10, 20, 4, 250), (255, 255, 1, 255)):
+                frame = srv.build_command(x, y, cat, seq).decode().strip()
+                self.assertEqual(int(frame.split(",")[4]), (x + y + cat + seq) % 256)
+
+
+class RobustLineBufferTests(unittest.TestCase):
+    def test_timeout_raises_socket_timeout(self):
+        conn = FakeConn([None])
+        with self.assertRaises(socket.timeout):
+            srv.read_line(conn, b"", 0.1)
+
+    def test_partial_across_recv_then_complete(self):
+        conn = FakeConn([b"ACK:", b"DONE:1:10:20:3\n", b"extra\n"])
+        line, buf = srv.read_line(conn, b"", 0.5)
+        self.assertEqual(line, "ACK:DONE:1:10:20:3")
+        line2, _ = srv.read_line(conn, buf, 0.5)
+        self.assertEqual(line2, "extra")
+
+    def test_exact_boundary_not_rejected(self):
+        # 恰好等于 MAX_LINE_BYTES 的行不应触发超长拒绝（只有 > 才拒绝）
+        conn = FakeConn([b"x" * srv.MAX_LINE_BYTES + b"\n"])
+        line, _ = srv.read_line(conn, b"", 0.5)
+        self.assertEqual(len(line), srv.MAX_LINE_BYTES)
+
+    def test_oversized_single_recv_rejected(self):
+        conn = FakeConn([b"x" * (srv.MAX_LINE_BYTES + 1)])
+        with self.assertRaises(ConnectionError):
+            srv.read_line(conn, b"", 0.5)
+
+    def test_oversized_accumulated_across_recv_rejected(self):
+        # 分多次 recv 累计超过上限也应被拦下
+        conn = FakeConn([b"a" * 100, b"b" * 100, b"c" * 100])
+        with self.assertRaises(ConnectionError):
+            srv.read_line(conn, b"", 0.5)
+
+
+class MoreAuthTests(unittest.TestCase):
+    def test_empty_token_default_allows(self):
+        # 默认 AUTH_TOKEN 为空：不认证也能连（保持原行为）
+        with mock.patch.object(srv, "AUTH_TOKEN", ""):
+            ok, _ = srv.authenticate(FakeConn([]), b"")
+            self.assertTrue(ok)
+
+    def test_wrong_token_rejected(self):
+        conn = FakeConn([b"AUTH nope\n"])
+        with mock.patch.object(srv, "AUTH_TOKEN", "secret"):
+            ok, _ = srv.authenticate(conn, b"")
+            self.assertFalse(ok)
+
+    def test_correct_token_trims_newline(self):
+        # 首行带换行也能正确匹配（read_line 已 strip）
+        conn = FakeConn([b"AUTH secret\n"])
+        with mock.patch.object(srv, "AUTH_TOKEN", "secret"):
+            ok, _ = srv.authenticate(conn, b"")
+            self.assertTrue(ok)
 
 
 if __name__ == "__main__":

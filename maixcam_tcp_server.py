@@ -33,8 +33,27 @@ import signal
 import sys
 import time
 
-LOCAL_IP = "0.0.0.0"      # 监听所有网卡；Maixcam 上可填本机 IP，如 "192.168.10.5"
-LOCAL_PORT = 8080
+# ----------------------------------------------------------------------------
+# 配置外置辅助（P1-8）：默认值可由环境变量覆盖，部署时不必改源码。
+# 默认值本身仍是源码里的字面量，tools/check_protocol_config.py 会拿它和 ESP32
+# 端的 #define 比对，两端不一致时 CI 失败。
+# ----------------------------------------------------------------------------
+def _env_bool(name, default):
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name, default):
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return int(v)
+
+
+LOCAL_IP = os.environ.get("MAIXCAM_LOCAL_IP", "0.0.0.0")  # 可由环境变量覆盖；默认监听所有网卡
+LOCAL_PORT = _env_int("MAIXCAM_LOCAL_PORT", 8080)
 RECV_TIMEOUT = 5.0        # 等待 ESP32 回执的超时（秒）
 ACK_TIMEOUT_ACTION = "continue"  # 超时后行为："continue" 继续发下一条 / "abort" 断开该客户端
 MAX_CONSECUTIVE_TIMEOUTS = 3     # continue 模式下连续超时几次就判定链路已死并断开
@@ -45,16 +64,18 @@ MAX_CONSECUTIVE_TIMEOUTS = 3     # continue 模式下连续超时几次就判定
 # 凭据不写进源码：export MAIXCAM_AUTH_TOKEN="<token>"（须与 ESP32 的 secrets.h 一致）。
 # 为空 = 不认证，仅限隔离的受信局域网；main() 启动时会打印告警。
 AUTH_TOKEN = os.environ.get("MAIXCAM_AUTH_TOKEN", "")
-MAX_CLIENTS = 1           # 固定单客户端（_accept_client 按此实现；改成 >1 不会生效）
+# 单客户端模式：同一时刻只允许一个 ESP32 连接（见 _accept_client / main）。
+# 这是有意为之的固定行为，不是"可配"项——改成 False 才会放开多客户端。
+_SINGLE_CLIENT_MODE = True
 MAX_LINE_BYTES = 256      # 单行上限：对端持续发不含 '\n' 的数据时不能让 buf 无限增长
-USE_CHECKSUM = False      # 必须与 ESP32 端同名常量一致；true 时帧尾追加 (x+y+cat+seq)%256
-SEQ_MOD = 256             # ACK 序号范围 0..255，发完回绕
+USE_CHECKSUM = _env_bool("MAIXCAM_USE_CHECKSUM", False)  # 必须与 ESP32 端同名常量一致
+SEQ_MOD = _env_int("MAIXCAM_SEQ_MOD", 256)              # ACK 序号范围 0..255，发完回绕
 CONTROL_SEQ = -1          # ESTOP / RESUME 回执使用的保留序号（普通指令不会用到 -1）
 
 # ----------------------------------------------------------------------------
 # 检测配置（按你的设备 / 模型修改）
 # ----------------------------------------------------------------------------
-MODEL_PATH = "/root/models/yolov5s.mud"   # Maixcam 上的模型文件路径（.mud / .kmodel）
+MODEL_PATH = os.environ.get("MAIXCAM_MODEL_PATH", "/root/models/yolov5s.mud")   # 可由环境变量覆盖
 INPUT_W, INPUT_H = 224, 224               # 模型输入尺寸（需与模型一致）
 CONF_THRES = 0.5
 IOU_THRES = 0.45
@@ -407,7 +428,7 @@ def _accept_client(conn, addr):
     if active_addr is not None:
         # 避免多个线程同时抢同一台相机 / 同一条机械臂
         print(f"[warn] 拒绝新连接 {addr}：已有客户端 {active_addr} 连接中"
-              f"（单客户端模式，MAX_CLIENTS={MAX_CLIENTS}）")
+              f"（单客户端模式）")
         try:
             conn.close()
         except OSError:
@@ -454,7 +475,7 @@ def main():
             if active_addr is not None:
                 # 单客户端：直接拒绝新连接，避免多个线程同时驱动同一台相机/机械臂
                 print(f"[warn] 拒绝新连接 {addr}：已有客户端 {active_addr} 连接中"
-                      f"（单客户端模式，MAX_CLIENTS={MAX_CLIENTS}）")
+                      f"（单客户端模式）")
                 try:
                     conn.close()
                 except OSError:

@@ -30,6 +30,11 @@ jobs:
       - name: 协议层单测
         run: python3 -m unittest discover -s tests -v
 
+      # P1-8：比对 Python 端与 ESP32 端必须一致的协议默认值
+      # （USE_CHECKSUM / MAX_PIXEL_X / MAX_PIXEL_Y）。改一端忘了改另一端时 CI 失败。
+      - name: 协议配置两端一致性
+        run: python3 tools/check_protocol_config.py
+
       # 防止把真实 SSID / 密码 / token 再写回源码
       - name: 凭据不得入库
         run: python3 tools/check_no_secrets.py
