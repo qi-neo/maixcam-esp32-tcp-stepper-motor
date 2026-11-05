@@ -170,7 +170,7 @@ const unsigned long dataProcessInterval = 10000;  // 数据处理间隔(ms)
 
 ```cpp
 // ⚠️ 以下 Wi-Fi 信息已从原文脱敏，请替换为你自己的网络
-const char* ssid = "205-03";
+const char* ssid = "<YOUR_WIFI_SSID>";
 const char* password = "<YOUR_WIFI_PASSWORD>";   // 原文为明文密码，已脱敏
 
 const char* targetIP = "192.168.10.5";   // Maixcam 的 IP（TCP 服务器）
@@ -224,8 +224,8 @@ String receivedData = "";
 unsigned long lastDataProcessTime = 0;
 const unsigned long dataProcessInterval = 10000;
 
-// ⚠️ Wi-Fi 密码已从原文脱敏，请替换为你自己的网络
-const char* ssid = "205-03";
+// ⚠️ Wi-Fi SSID 与密码已从原文脱敏，请替换为你自己的网络
+const char* ssid = "<YOUR_WIFI_SSID>";
 const char* password = "<YOUR_WIFI_PASSWORD>";
 const char* targetIP = "192.168.10.5";
 const uint16_t targetPort = 8080;
