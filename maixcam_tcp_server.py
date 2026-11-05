@@ -25,6 +25,8 @@
 #
 # 用法（Maixcam 上）：python3 maixcam_tcp_server.py
 
+import hmac
+import os
 import socket
 import threading
 import signal
@@ -40,8 +42,11 @@ MAX_CONSECUTIVE_TIMEOUTS = 3     # continue 模式下连续超时几次就判定
 # ----------------------------------------------------------------------------
 # 安全 / 协议配置
 # ----------------------------------------------------------------------------
-AUTH_TOKEN = ""           # 非空时启用首行认证："AUTH <token>\n"；必须与 ESP32 端一致。
-MAX_CLIENTS = 1           # 单客户端模式（本项目同一时刻只允许一个 ESP32 连接）
+# 凭据不写进源码：export MAIXCAM_AUTH_TOKEN="<token>"（须与 ESP32 的 secrets.h 一致）。
+# 为空 = 不认证，仅限隔离的受信局域网；main() 启动时会打印告警。
+AUTH_TOKEN = os.environ.get("MAIXCAM_AUTH_TOKEN", "")
+MAX_CLIENTS = 1           # 固定单客户端（_accept_client 按此实现；改成 >1 不会生效）
+MAX_LINE_BYTES = 256      # 单行上限：对端持续发不含 '\n' 的数据时不能让 buf 无限增长
 USE_CHECKSUM = False      # 必须与 ESP32 端同名常量一致；true 时帧尾追加 (x+y+cat+seq)%256
 SEQ_MOD = 256             # ACK 序号范围 0..255，发完回绕
 CONTROL_SEQ = -1          # ESTOP / RESUME 回执使用的保留序号（普通指令不会用到 -1）
@@ -189,6 +194,10 @@ def read_line(conn, buf, timeout):
     """
     deadline = time.monotonic() + timeout
     while b"\n" not in buf:
+        # ESP32 端 RX_BUF_SIZE=128，服务端留一倍余量。没有这个上限时，
+        # 对端可以一直发不含 '\n' 的数据把 buf 撑到任意大。
+        if len(buf) > MAX_LINE_BYTES:
+            raise ConnectionError(f"对端发送超长行（>{MAX_LINE_BYTES} B 且无换行），断开连接")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise socket.timeout("read_line timeout")
@@ -198,6 +207,8 @@ def read_line(conn, buf, timeout):
             return None, buf
         buf += chunk
     raw, _, buf = buf.partition(b"\n")
+    if len(raw) > MAX_LINE_BYTES:
+        raise ConnectionError(f"单行超过 {MAX_LINE_BYTES} B，丢弃并断开连接")
     return raw.decode("utf-8", "replace").strip(), buf
 
 
@@ -242,7 +253,7 @@ def authenticate(conn, buf, addr=None):
     if line is None:
         print(f"[warn] {addr} 在认证完成前断开连接")
         return False, buf
-    if line != f"AUTH {AUTH_TOKEN}":
+    if not hmac.compare_digest(line, f"AUTH {AUTH_TOKEN}"):
         # 不回显 token 本身，避免日志泄露
         print(f"[warn] {addr} 认证失败：首行不是合法的 AUTH 行，立即断开")
         return False, buf

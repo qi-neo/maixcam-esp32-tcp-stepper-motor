@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .pio/
 .vscode/
+secrets.h
+.env
+*.mud
+*.kmodel
+build/

@@ -21,17 +21,15 @@
 #include <limits.h>
 #include <string.h>
 #include <stdlib.h>
+#include "secrets.h"
 
 // ===================== 用户配置（按需修改） =====================
-const char* WIFI_SSID     = "205-03";
-const char* WIFI_PASSWORD = "<YOUR_WIFI_PASSWORD>";   // 原文已脱敏，替换为你自己的网络
-const char* HOST_IP       = "192.168.10.5";           // Maixcam TCP 服务器 IP
-const uint16_t HOST_PORT  = 8080;
+// 真实凭据不进版本库：把同目录的 secrets.example.h 复制为 secrets.h 后填写。
+// secrets.h 已被 .gitignore 忽略；缺文件时编译直接报错，避免把占位密码烧进设备。
 
-// 可选认证：必须与 Maixcam 端 AUTH_TOKEN 完全一致。
+// 可选认证：AUTH_TOKEN 必须与 Maixcam 端 MAIXCAM_AUTH_TOKEN 完全一致。
 // 非空时，TCP 连上后的首行发送 "AUTH <token>\n"；服务器校验失败会立即断开。
-// 默认空 = 不认证（保持旧用法），此时服务器也不要求 AUTH 行。
-const char* AUTH_TOKEN    = "";
+// 默认空 = 不认证，仅限隔离的受信局域网。
 
 // 控制模式：
 //   MODE_PIXEL  —— 按检测到的像素坐标线性映射到电机行程（推荐，符合"跟随目标"的本意）
@@ -400,16 +398,25 @@ void setup() {
   delay(10);
   Serial.println("ESP32 stepper TCP client (optimized) starting...");
 
-  // Wi-Fi
+  // Wi-Fi：有界等待。凭据填错或 AP 不在线时不能把 setup() 卡死——
+  // 否则 loop() 里的 ensureWiFi() / ensureTCP() / ESTOP 永远到不了，设备表现为"变砖"。
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
+  const uint32_t WIFI_BOOT_TIMEOUT_MS = 15000;
+  uint32_t wifiStart = millis();
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - wifiStart < WIFI_BOOT_TIMEOUT_MS) {
     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     delay(500);
     Serial.print(".");
   }
-  // 串口日志：显式构造 String 再拼接，避免 "字面量 + String" 在部分核心上
-  // 找不到匹配的 operator+ 而编译失败
-  Serial.println(String("\nWiFi connected, IP=") + WiFi.localIP().toString());
+  if (WiFi.status() == WL_CONNECTED) {
+    // 串口日志：显式构造 String 再拼接，避免 "字面量 + String" 在部分核心上
+    // 找不到匹配的 operator+ 而编译失败
+    Serial.println(String("\nWiFi connected, IP=") + WiFi.localIP().toString());
+  } else {
+    Serial.println("\n[warn] Wi-Fi 15 s 内未连上：检查 secrets.h 的 WIFI_SSID / "
+                   "WIFI_PASSWORD 与 AP 状态。进入 loop() 由 ensureWiFi() 带退避重试。");
+  }
 
   // 电机参数
   stepperX.setMaxSpeed(MAX_SPEED);

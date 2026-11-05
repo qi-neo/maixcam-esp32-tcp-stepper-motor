@@ -99,7 +99,7 @@
 
 ## 五、验证清单（上线前）
 
-- [ ] Arduino IDE 安装 `AccelStepper`，编译通过（本环境无 ESP32 工具链，未做硬件编译，需你在本地确认）。
+- [ ] 复制 `esp32_tcp_stepper/secrets.example.h` 为 `secrets.h` 并填入 Wi-Fi / 服务器配置；Arduino IDE 安装 `AccelStepper` 后编译烧录。协议层单测与凭据检查已进 CI；固件编译暂未接 `arduino-cli`，仍需本地确认。
 - [ ] 烧录后串口监视器（115200）可见 `CMD` / `DONE` 日志。
 - [ ] 断开 Maixcam 再连，ESP32 自动重连；断开 Wi-Fi 后自动恢复。
 - [ ] Maixcam 端可见 `ACK:DONE:...`，超时场景打印 `ACK timeout` 不卡死。

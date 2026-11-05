@@ -16,10 +16,11 @@
 > 本节描述仓库里**优化后的源码**（`esp32_tcp_stepper/esp32_tcp_stepper.ino` 与
 > `maixcam_tcp_server.py`），与下面内联的初版教程代码不同。协议细节见 [protocol.md](protocol.md)。
 
-- **⚠️ 默认无认证，局域网内任何人可驱动电机**：`maixcam_tcp_server.py` 的 `AUTH_TOKEN`
-  默认为空字符串，此时服务器不做身份校验——任何能访问 8080 端口的设备都可以连接并控制
-  机械臂。**仅限受信网络/实验台使用**。对外演示或生产环境请至少做到：
-  - 两端设置相同的非空 `AUTH_TOKEN`（Python 服务器 + ESP32 `.ino`）。启用后 ESP32 连接成功
+- **⚠️ 默认无认证，局域网内任何人可驱动电机**：`maixcam_tcp_server.py` 从环境变量
+  `MAIXCAM_AUTH_TOKEN` 读取 token，未设置时为空，此时服务器不做身份校验——任何能访问
+  8080 端口的设备都可以连接并控制机械臂。**仅限受信网络/实验台使用**。对外演示或生产环境请至少做到：
+  - 两端设置相同的非空 token：Maixcam 端 `export MAIXCAM_AUTH_TOKEN="<token>"`，
+    ESP32 端填进 `esp32_tcp_stepper/secrets.h` 的 `AUTH_TOKEN`。启用后 ESP32 连接成功
     会先发 `AUTH <token>\n`，首行格式不对/超时，服务器立即断开；
   - 用防火墙、独立热点或 VLAN 限制 8080 端口的来源 IP；
   - 保留物理断电 / 驱动器使能作为最终急停手段，不要只依赖软件。
@@ -103,14 +104,19 @@ sequenceDiagram
 
 1. **接线**：ESP32 与 57 步进闭环驱动器按代码里的引脚定义连接（使能 27/17、脉冲 25/5、方向 26/18），
    ESP32 与驱动器共用多路开关电源并共地。
-2. **烧录 ESP32**：用 Arduino IDE 打开 [`esp32_tcp_stepper/esp32_tcp_stepper.ino`](esp32_tcp_stepper/esp32_tcp_stepper.ino)，
-   安装 `AccelStepper` 库，把 `ssid`、`password` 改成自己的网络，`targetIP` 改成 Maixcam 的 IP，然后烧录。
-3. **运行 Maixcam**：把 [`maixcam_tcp_server.py`](maixcam_tcp_server.py) 放到 Maixcam 上，
-   确认脚本里的 `local_ip` 与本机一致，执行 `python3 maixcam_tcp_server.py`。
-4. **看结果**：ESP32 串口监视器（115200）会打印连接状态与电机位置，Maixcam 端打印
-   `Sent ...` 与 `Received!`。
+2. **配置凭据**：把 [`esp32_tcp_stepper/secrets.example.h`](esp32_tcp_stepper/secrets.example.h)
+   复制为同目录的 `secrets.h`，填入 `WIFI_SSID` / `WIFI_PASSWORD` / `HOST_IP` / `HOST_PORT`
+   （可选 `AUTH_TOKEN`）。该文件已被 `.gitignore` 忽略；不创建它，固件编译会直接报错。
+3. **烧录 ESP32**：用 Arduino IDE 打开 [`esp32_tcp_stepper/esp32_tcp_stepper.ino`](esp32_tcp_stepper/esp32_tcp_stepper.ino)，
+   安装 `AccelStepper` 库后烧录。Wi-Fi 连不上时 `setup()` 最多等 15 s 就会打印原因并进入 `loop()`
+   持续重试，不会卡死。
+4. **运行 Maixcam**：把 [`maixcam_tcp_server.py`](maixcam_tcp_server.py) 放到 Maixcam 上，
+   两端启用认证时先 `export MAIXCAM_AUTH_TOKEN="<与 secrets.h 相同的 token>"`，
+   再执行 `python3 maixcam_tcp_server.py`。
+5. **看结果**：ESP32 串口监视器（115200）会打印连接状态与电机位置，Maixcam 端打印
+   `[send]` / `[recv]`。
 
-> 两个 IP 必须对上：ESP32 的 `targetIP` 等于 Maixcam 的 `local_ip`。Maixcam 重新连 Wi-Fi 之后 IP 可能变化，
+> 两个 IP 必须对上：`secrets.h` 的 `HOST_IP` 等于服务端 `LOCAL_IP` 所在的机器地址。Maixcam 重新连 Wi-Fi 之后 IP 可能变化，
 > 需要同步修改，否则 ESP32 连不上。
 
 ## 第一部分：ESP32 端（TCP 客户端 · C++ / Arduino）

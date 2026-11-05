@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protocol:
+    name: 协议层单测与配置外置检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 纯 Python，无硬件依赖：帧构造、ACK 解析、半包/粘包、超长行、
+      # 认证成功与失败路径。用 socketpair() 做本机回环，不占用端口。
+      - name: 协议层单测
+        run: python3 -m unittest discover -s tests -v
+
+      # 防止把真实 SSID / 密码 / token 再写回源码
+      - name: 凭据不得入库
+        run: python3 tools/check_no_secrets.py
+
+      # 固件编译暂未接 arduino-cli（需要 esp32 core 与 AccelStepper）。
+      # 这里先做静态门禁：配置模板存在、固件引用 secrets.h、setup() 有有界等待。
+      # 接上 arduino-cli 后可把这一段换成真正的 compile。
+      - name: 固件配置与启动路径静态检查
+        run: |
+          set -e
+          test -f esp32_tcp_stepper/secrets.example.h
+          grep -q '#include "secrets.h"' esp32_tcp_stepper/esp32_tcp_stepper.ino
+          grep -q 'WIFI_BOOT_TIMEOUT_MS' esp32_tcp_stepper/esp32_tcp_stepper.ino
+          grep -q 'secrets.h' .gitignore
